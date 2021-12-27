@@ -1,0 +1,12 @@
+*
+!/**/
+!*.*
+!Makefile
+!autodep
+!LICENSE
+*.env
+*.o
+*.log
+*.diff
+*.vscode
+*.clang-format
