@@ -43,7 +43,7 @@ endif
 
 # A phony target is one that is not really the name of a file
 # https://www.gnu.org/software/make/manual/html_node/Phony-Targets.html
-.PHONY: all clean depend fmt
+.PHONY: all clean depend fmt test
 
 all: $(TARGET_EXECS)
 
@@ -72,6 +72,12 @@ tests/write_10_blocks_simple: tests/write_10_blocks_simple.o fs/operations.o fs/
 tests/write_more_than_10_blocks_simple: tests/write_more_than_10_blocks_simple.o fs/operations.o fs/state.o
 
 
+test: $(TARGET_EXECS)
+	for test in $(TARGET_EXECS); do \
+		printf "%s: " $$test && ./$$test; \
+	done
+
+ 
 clean:
 	rm -f $(OBJECTS) $(TARGET_EXECS)
 
