@@ -100,32 +100,38 @@ int inode_create(inode_type n_type) {
             freeinode_ts[inumber] = TAKEN;
             insert_delay(); // simulate storage access delay (to i-node)
             inode_table[inumber].i_node_type = n_type;
+            inode_table[inumber].i_size = 0; // Initiliaze the size of the inode
 
             if (n_type == T_DIRECTORY) {
-                /* Initializes directory (filling its block with empty
+                /* Initializes directory (filling its blocks with empty
                  * entries, labeled with inumber==-1) */
-                int b = data_block_alloc();
-                if (b == -1) {
-                    freeinode_ts[inumber] = FREE;
-                    return -1;
+                for(int i = 0; i < NUMBER_BLOCKS; i++) {
+                    int b = data_block_alloc();
+                    if (b == -1) {
+                        freeinode_ts[inumber] = FREE;
+                        return -1;
+                    }
+
+                    inode_table[inumber].i_size += BLOCK_SIZE;
+                    inode_table[inumber].i_data_block[i] = b;
+
+                    dir_entry_t *dir_entry = (dir_entry_t *)data_block_get(b);
+                    if (dir_entry == NULL) {
+                        freeinode_ts[inumber] = FREE;
+                        return -1;
+                    }
+
+                    for (size_t j = 0; j < MAX_DIR_ENTRIES; j++) {
+                        dir_entry[j].d_inumber = -1;
+                    }
                 }
 
-                inode_table[inumber].i_size = BLOCK_SIZE;
-                inode_table[inumber].i_data_block = b;
-
-                dir_entry_t *dir_entry = (dir_entry_t *)data_block_get(b);
-                if (dir_entry == NULL) {
-                    freeinode_ts[inumber] = FREE;
-                    return -1;
-                }
-
-                for (size_t i = 0; i < MAX_DIR_ENTRIES; i++) {
-                    dir_entry[i].d_inumber = -1;
-                }
             } else {
                 /* In case of a new file, simply sets its size to 0 */
                 inode_table[inumber].i_size = 0;
-                inode_table[inumber].i_data_block = -1;
+                for(int i = 0; i < NUMBER_BLOCKS; i++) {
+                    inode_table[inumber].i_data_block[i] = -1;
+                }
             }
             return inumber;
         }
@@ -151,8 +157,10 @@ int inode_delete(int inumber) {
     freeinode_ts[inumber] = FREE;
 
     if (inode_table[inumber].i_size > 0) {
-        if (data_block_free(inode_table[inumber].i_data_block) == -1) {
-            return -1;
+        for(int i = 0; i < NUMBER_BLOCKS; i++) {
+            if (data_block_free(inode_table[inumber].i_data_block[i]) == -1) {
+                return -1;
+            }
         }
     }
 
@@ -200,21 +208,24 @@ int add_dir_entry(int inumber, int sub_inumber, char const *sub_name) {
     }
 
     /* Locates the block containing the directory's entries */
-    dir_entry_t *dir_entry =
-        (dir_entry_t *)data_block_get(inode_table[inumber].i_data_block);
-    if (dir_entry == NULL) {
-        return -1;
-    }
+    for(int j = 0; j < NUMBER_BLOCKS; j++) {
+        dir_entry_t *dir_entry =
+            (dir_entry_t *)data_block_get(inode_table[inumber].i_data_block[j]);
+        if (dir_entry == NULL) {
+            return -1;
+        }
 
-    /* Finds and fills the first empty entry */
-    for (size_t i = 0; i < MAX_DIR_ENTRIES; i++) {
-        if (dir_entry[i].d_inumber == -1) {
-            dir_entry[i].d_inumber = sub_inumber;
-            strncpy(dir_entry[i].d_name, sub_name, MAX_FILE_NAME - 1);
-            dir_entry[i].d_name[MAX_FILE_NAME - 1] = 0;
-            return 0;
+        /* Finds and fills the first empty entry */
+        for (size_t i = 0; i < MAX_DIR_ENTRIES; i++) {
+            if (dir_entry[i].d_inumber == -1) {
+                dir_entry[i].d_inumber = sub_inumber;
+                strncpy(dir_entry[i].d_name, sub_name, MAX_FILE_NAME - 1);
+                dir_entry[i].d_name[MAX_FILE_NAME - 1] = 0;
+                return 0;
+            }
         }
     }
+
 
     return -1;
 }
@@ -233,19 +244,22 @@ int find_in_dir(int inumber, char const *sub_name) {
     }
 
     /* Locates the block containing the directory's entries */
-    dir_entry_t *dir_entry =
-        (dir_entry_t *)data_block_get(inode_table[inumber].i_data_block);
-    if (dir_entry == NULL) {
-        return -1;
-    }
-
-    /* Iterates over the directory entries looking for one that has the target
-     * name */
-    for (int i = 0; i < MAX_DIR_ENTRIES; i++)
-        if ((dir_entry[i].d_inumber != -1) &&
-            (strncmp(dir_entry[i].d_name, sub_name, MAX_FILE_NAME) == 0)) {
-            return dir_entry[i].d_inumber;
+    for(int i = 0; i < NUMBER_BLOCKS; i++) {
+        dir_entry_t *dir_entry =
+            (dir_entry_t *)data_block_get(inode_table[inumber].i_data_block[i]);
+        if (dir_entry == NULL) {
+            return -1;
         }
+
+        /* Iterates over the directory entries looking for one that has the target
+        * name */
+        for (int j = 0; j < MAX_DIR_ENTRIES; j++) {
+            if ((dir_entry[j].d_inumber != -1) &&
+                (strncmp(dir_entry[j].d_name, sub_name, MAX_FILE_NAME) == 0)) {
+                return dir_entry[j].d_inumber;
+            }
+        }
+    }
 
     return -1;
 }

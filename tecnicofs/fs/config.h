@@ -9,6 +9,7 @@
 #define INODE_TABLE_SIZE (50)
 #define MAX_OPEN_FILES (20)
 #define MAX_FILE_NAME (40)
+#define NUMBER_BLOCKS (10)
 
 #define BUFFER_SIZE (256)
 
