@@ -34,6 +34,21 @@ static inline bool valid_file_handle(int file_handle) {
     return file_handle >= 0 && file_handle < MAX_OPEN_FILES;
 }
 
+size_t get_number_direct_blocks_used(inode_t inode) {
+    size_t num = inode.i_size / BLOCK_SIZE + 1;
+    return num > NUMBER_DIRECT_BLOCKS ? NUMBER_DIRECT_BLOCKS : num;
+}
+
+size_t get_number_indirect_blocks_used(inode_t inode) {
+    size_t num = inode.i_size / BLOCK_SIZE + 1;
+    return num > NUMBER_DIRECT_BLOCKS ? num - NUMBER_DIRECT_BLOCKS : 0;
+}
+
+size_t get_number_total_blocks_used(inode_t inode) {
+    return inode.i_size / BLOCK_SIZE + 1;
+}
+
+
 /**
  * We need to defeat the optimizer for the insert_delay() function.
  * Under optimization, the empty loop would be completely optimized away.
@@ -105,7 +120,7 @@ int inode_create(inode_type n_type) {
             if (n_type == T_DIRECTORY) {
                 /* Initializes directory (filling its blocks with empty
                  * entries, labeled with inumber==-1) */
-                for(int i = 0; i < NUMBER_BLOCKS; i++) {
+                for(int i = 0; i < NUMBER_DIRECT_BLOCKS; i++) {
                     int b = data_block_alloc();
                     if (b == -1) {
                         freeinode_ts[inumber] = FREE;
@@ -113,7 +128,7 @@ int inode_create(inode_type n_type) {
                     }
 
                     inode_table[inumber].i_size += BLOCK_SIZE;
-                    inode_table[inumber].i_data_block[i] = b;
+                    inode_table[inumber].i_direct_data_blocks[i] = b;
 
                     dir_entry_t *dir_entry = (dir_entry_t *)data_block_get(b);
                     if (dir_entry == NULL) {
@@ -129,9 +144,12 @@ int inode_create(inode_type n_type) {
             } else {
                 /* In case of a new file, simply sets its size to 0 */
                 inode_table[inumber].i_size = 0;
-                for(int i = 0; i < NUMBER_BLOCKS; i++) {
-                    inode_table[inumber].i_data_block[i] = -1;
+                for(int i = 0; i < NUMBER_DIRECT_BLOCKS; i++) {
+                    inode_table[inumber].i_direct_data_blocks[i] = -1;
                 }
+                
+                inode_table[inumber].i_indirect_data_block = -1;
+                
             }
             return inumber;
         }
@@ -157,10 +175,20 @@ int inode_delete(int inumber) {
     freeinode_ts[inumber] = FREE;
 
     if (inode_table[inumber].i_size > 0) {
-        for(int i = 0; i < NUMBER_BLOCKS; i++) {
-            if (data_block_free(inode_table[inumber].i_data_block[i]) == -1) {
+        for(size_t i = 0; i < get_number_direct_blocks_used(inode_table[inumber]); i++) {
+            if (data_block_free(inode_table[inumber].i_direct_data_blocks[i]) == -1) {
                 return -1;
             }
+        }
+
+        int *indirect_block = (int*)data_block_get(inode_table[inumber].i_indirect_data_block);
+        for(size_t i = 0; i < get_number_indirect_blocks_used(inode_table[inumber]); i++) {
+            if (data_block_free(indirect_block[i]) == -1) {
+                return -1;
+            }
+        }
+        if (data_block_free(inode_table[inumber].i_indirect_data_block) == -1) {
+            return -1;
         }
     }
 
@@ -208,9 +236,9 @@ int add_dir_entry(int inumber, int sub_inumber, char const *sub_name) {
     }
 
     /* Locates the block containing the directory's entries */
-    for(int j = 0; j < NUMBER_BLOCKS; j++) {
+    for(int j = 0; j < NUMBER_DIRECT_BLOCKS; j++) {
         dir_entry_t *dir_entry =
-            (dir_entry_t *)data_block_get(inode_table[inumber].i_data_block[j]);
+            (dir_entry_t *)data_block_get(inode_table[inumber].i_direct_data_blocks[j]);
         if (dir_entry == NULL) {
             return -1;
         }
@@ -244,9 +272,9 @@ int find_in_dir(int inumber, char const *sub_name) {
     }
 
     /* Locates the block containing the directory's entries */
-    for(int i = 0; i < NUMBER_BLOCKS; i++) {
+    for(int i = 0; i < NUMBER_DIRECT_BLOCKS; i++) {
         dir_entry_t *dir_entry =
-            (dir_entry_t *)data_block_get(inode_table[inumber].i_data_block[i]);
+            (dir_entry_t *)data_block_get(inode_table[inumber].i_direct_data_blocks[i]);
         if (dir_entry == NULL) {
             return -1;
         }

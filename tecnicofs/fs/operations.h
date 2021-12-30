@@ -58,16 +58,6 @@ int tfs_open(char const *name, int flags);
  */
 int tfs_close(int fhandle);
 
-/* Writes to an open file, starting at the current offset
- * Input:
- * 	- file handle (obtained from a previous call to tfs_open)
- * 	- buffer containing the contents to write
- * 	- length of the contents (in bytes)
- * 	Returns the number of bytes that were written (can be lower than
- * 	'len' if the maximum file size is exceeded), or -1 in case of error
- */
-ssize_t tfs_write_block(open_file_entry_t *file, inode_t *inode, void const *buffer, size_t block_index, size_t offset, size_t to_write);
-
 
 /* Writes to an open file, starting at the current offset
  * Input:
@@ -78,18 +68,6 @@ ssize_t tfs_write_block(open_file_entry_t *file, inode_t *inode, void const *buf
  * 	'len' if the maximum file size is exceeded), or -1 in case of error
  */
 ssize_t tfs_write(int fhandle, void const *buffer, size_t len);
-
-
-/* Reads from an open file, starting at the current offset
- * * Input:
- * 	- file handle (obtained from a previous call to tfs_open)
- * 	- destination buffer
- * 	- length of the buffer
- * 	Returns the number of bytes that were copied from the file to the buffer
- * 	(can be lower than 'len' if the file size was reached), or -1 in case of
- * error
- */
-ssize_t tfs_read_block(open_file_entry_t *file, inode_t *inode, void *buffer, size_t block_index, size_t block_offset, size_t to_read);
 
 
 /* Reads from an open file, starting at the current offset
