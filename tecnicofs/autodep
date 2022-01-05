@@ -4,6 +4,13 @@ write_10_blocks_spill.o: tests/write_10_blocks_spill.c \
  tests/../fs/operations.h tests/../fs/config.h tests/../fs/state.h
 write_10_blocks_simple.o: tests/write_10_blocks_simple.c \
  tests/../fs/operations.h tests/../fs/config.h tests/../fs/state.h
+write_max_blocks_spill.o: tests/write_max_blocks_spill.c \
+ tests/../fs/operations.h tests/../fs/config.h tests/../fs/state.h
+write_max_blocks_simple.o: tests/write_max_blocks_simple.c \
+ tests/../fs/operations.h tests/../fs/config.h tests/../fs/state.h
+write_more_than_10_blocks_spill.o: \
+ tests/write_more_than_10_blocks_spill.c tests/../fs/operations.h \
+ tests/../fs/config.h tests/../fs/state.h
 write_more_than_10_blocks_simple.o: \
  tests/write_more_than_10_blocks_simple.c tests/../fs/operations.h \
  tests/../fs/config.h tests/../fs/state.h

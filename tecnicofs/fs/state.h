@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/types.h>
+#include <pthread.h>
 
 /*
  * Directory entry
@@ -25,6 +26,7 @@ typedef struct {
     size_t i_size;
     int i_direct_data_blocks[NUMBER_DIRECT_BLOCKS];
     int i_indirect_data_block;
+    pthread_rwlock_t rwlock;
     /* in a real FS, more fields would exist here */
 } inode_t;
 
@@ -40,9 +42,9 @@ typedef struct {
 
 #define MAX_DIR_ENTRIES (BLOCK_SIZE / sizeof(dir_entry_t))
 
-size_t get_number_direct_blocks_used(inode_t inode);
-size_t get_number_indirect_blocks_used(inode_t inode);
-size_t get_number_total_blocks_used(inode_t inode);
+size_t get_number_direct_blocks_used(inode_t* inode);
+size_t get_number_indirect_blocks_used(inode_t* inode);
+size_t get_number_total_blocks_used(inode_t* inode);
 
 void state_init();
 void state_destroy();
@@ -52,6 +54,7 @@ int inode_delete(int inumber);
 inode_t *inode_get(int inumber);
 int inode_datablock_alloc(inode_t* inode, size_t current_block_index);
 void* inode_datablock_get(inode_t* inode, size_t current_block_index);
+int inode_datablock_free(inode_t* inode);
 
 int clear_dir_entry(int inumber, int sub_inumber);
 int add_dir_entry(int inumber, int sub_inumber, char const *sub_name);

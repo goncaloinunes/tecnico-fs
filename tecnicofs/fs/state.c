@@ -6,12 +6,14 @@
 #include <string.h>
 #include <unistd.h>
 
+
 /* Persistent FS state  (in reality, it should be maintained in secondary
  * memory; for simplicity, this project maintains it in primary memory) */
 
 /* I-node table */
 static inode_t inode_table[INODE_TABLE_SIZE];
 static char freeinode_ts[INODE_TABLE_SIZE];
+pthread_rwlock_t inode_table_rwlock;
 
 /* Data blocks */
 static char fs_data[BLOCK_SIZE * DATA_BLOCKS];
@@ -34,18 +36,18 @@ static inline bool valid_file_handle(int file_handle) {
     return file_handle >= 0 && file_handle < MAX_OPEN_FILES;
 }
 
-size_t get_number_direct_blocks_used(inode_t inode) {
-    size_t num = inode.i_size / BLOCK_SIZE + 1;
+size_t get_number_direct_blocks_used(inode_t* inode) {
+    size_t num = inode->i_size / BLOCK_SIZE + 1;
     return num > NUMBER_DIRECT_BLOCKS ? NUMBER_DIRECT_BLOCKS : num;
 }
 
-size_t get_number_indirect_blocks_used(inode_t inode) {
-    size_t num = inode.i_size / BLOCK_SIZE + 1;
+size_t get_number_indirect_blocks_used(inode_t* inode) {
+    size_t num = inode->i_size / BLOCK_SIZE + 1;
     return num > NUMBER_DIRECT_BLOCKS ? num - NUMBER_DIRECT_BLOCKS : 0;
 }
 
-size_t get_number_total_blocks_used(inode_t inode) {
-    return inode.i_size / BLOCK_SIZE + 1;
+size_t get_number_total_blocks_used(inode_t* inode) {
+    return inode->i_size / BLOCK_SIZE + 1;
 }
 
 
@@ -172,31 +174,49 @@ int inode_delete(int inumber) {
         return -1;
     }
 
-    freeinode_ts[inumber] = FREE;
-
     if (inode_table[inumber].i_size > 0) {
-        for(size_t i = 0; i < get_number_direct_blocks_used(inode_table[inumber]); i++) {
-            if (data_block_free(inode_table[inumber].i_direct_data_blocks[i]) == -1) {
-                return -1;
-            }
-        }
-
-        int *indirect_block = (int*)data_block_get(inode_table[inumber].i_indirect_data_block);
-        for(size_t i = 0; i < get_number_indirect_blocks_used(inode_table[inumber]); i++) {
-            if (data_block_free(indirect_block[i]) == -1) {
-                return -1;
-            }
-        }
-        if (data_block_free(inode_table[inumber].i_indirect_data_block) == -1) {
+        if(inode_datablock_free(&inode_table[inumber]) < 0) {
             return -1;
         }
     }
+
+    freeinode_ts[inumber] = FREE;
 
     /* TODO: handle non-empty directories (either return error, or recursively
      * delete children */
 
     return 0;
 }
+
+/*
+ * Frees all datablocks of the given inode
+ * Input:
+ *  - inode: pointer to the inode
+ * Returns: 0 if successful, -1 if failed
+*/
+int inode_datablock_free(inode_t* inode) {
+
+    for(size_t i = 0; i < get_number_direct_blocks_used(inode); i++) {
+        if (data_block_free(inode->i_direct_data_blocks[i]) == -1) {
+            return -1;
+        }
+    }
+
+    int *indirect_block = (int*)data_block_get(inode->i_indirect_data_block);
+    for(size_t i = 0; i < get_number_indirect_blocks_used(inode); i++) {
+        if (data_block_free(indirect_block[i]) == -1) {
+            return -1;
+        }
+    }
+    if (data_block_free(inode->i_indirect_data_block) == -1) {
+        return -1;
+    }
+
+    inode->i_size = 0;
+
+    return 0;
+}
+
 
 /*
  * Returns a pointer to an existing i-node.
@@ -243,7 +263,7 @@ int inode_datablock_alloc(inode_t* inode, size_t current_block_index) {
  * Returns: pointer to the first byte of the block, NULL otherwise
 */
 void* inode_datablock_get(inode_t* inode, size_t current_block_index) {
-
+    
     if(current_block_index < NUMBER_DIRECT_BLOCKS) {
        return data_block_get(inode->i_direct_data_blocks[current_block_index]);
     }
