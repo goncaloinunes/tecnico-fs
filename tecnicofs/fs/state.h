@@ -50,6 +50,8 @@ void state_destroy();
 int inode_create(inode_type n_type);
 int inode_delete(int inumber);
 inode_t *inode_get(int inumber);
+int inode_datablock_alloc(inode_t* inode, size_t current_block_index);
+void* inode_datablock_get(inode_t* inode, size_t current_block_index);
 
 int clear_dir_entry(int inumber, int sub_inumber);
 int add_dir_entry(int inumber, int sub_inumber, char const *sub_name);

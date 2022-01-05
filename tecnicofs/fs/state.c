@@ -214,6 +214,46 @@ inode_t *inode_get(int inumber) {
 }
 
 /*
+ * Allocated a new data block for the given inode
+ * Returns: block index if successful, -1 otherwise
+ */
+int inode_datablock_alloc(inode_t* inode, size_t current_block_index) {
+    
+    if(current_block_index < NUMBER_DIRECT_BLOCKS - 1) {
+       return inode->i_direct_data_blocks[current_block_index + 1] = data_block_alloc();
+
+    } 
+
+    if(inode->i_indirect_data_block == -1) {
+       if((inode->i_indirect_data_block = data_block_alloc()) < 0) {
+           return -1;
+       }
+    }
+
+    int *indirect_block = (int*)data_block_get(inode->i_indirect_data_block);
+    return indirect_block[current_block_index - (NUMBER_DIRECT_BLOCKS - 1)] = data_block_alloc();
+}
+
+
+/*
+ * Returns a pointer to the contents of a given block
+ * Input:
+ *  - inode pointer
+ *  - current block_index
+ * Returns: pointer to the first byte of the block, NULL otherwise
+*/
+void* inode_datablock_get(inode_t* inode, size_t current_block_index) {
+
+    if(current_block_index < NUMBER_DIRECT_BLOCKS) {
+       return data_block_get(inode->i_direct_data_blocks[current_block_index]);
+    }
+
+    int *indirect_block = (int*)data_block_get(inode->i_indirect_data_block);
+    return data_block_get(indirect_block[current_block_index - NUMBER_DIRECT_BLOCKS]);
+}
+
+
+/*
  * Adds an entry to the i-node directory data.
  * Input:
  *  - inumber: identifier of the i-node

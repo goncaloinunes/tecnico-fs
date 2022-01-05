@@ -25,7 +25,6 @@ static bool valid_pathname(char const *name) {
     return name != NULL && strlen(name) > 1 && name[0] == '/';
 }
 
-
 int tfs_lookup(char const *name) {
     if (!valid_pathname(name)) {
         return -1;
@@ -104,19 +103,21 @@ int tfs_close(int fhandle) { return remove_from_open_file_table(fhandle); }
 
 ssize_t tfs_write_block(open_file_entry_t *file, inode_t *inode, void const *buffer, size_t block_index, size_t offset, size_t to_write) {
 
+
     if(block_index >= TOTAL_NUMBER_BLOCKS - 1) {
         return -1;
     }
 
-    if (to_write <= 0) {
+    if(to_write <= 0) {
         return 0;
     }
 
-    if (inode->i_size == 0) {
+    if(inode->i_size == 0) {
         /* If empty file, allocate new block */
-        inode->i_direct_data_blocks[block_index] = data_block_alloc();
+       if((inode->i_direct_data_blocks[block_index] = data_block_alloc()) < 0) {
+           return -1;
+       }
     }
-
     /*
     printf("to_write: %ld\n", to_write);
     printf("offset: %ld\n", offset);
@@ -125,31 +126,15 @@ ssize_t tfs_write_block(open_file_entry_t *file, inode_t *inode, void const *buf
     if (to_write + offset >= BLOCK_SIZE) {
         to_write = BLOCK_SIZE - offset;
 
-        /* Allocate new block when the current block is gonna be filled */
+        
         if(block_index < TOTAL_NUMBER_BLOCKS - 1) {
-            if(block_index < NUMBER_DIRECT_BLOCKS - 1) {
-                inode->i_direct_data_blocks[block_index + 1] = data_block_alloc();
-
-            } else {
-                if(inode->i_indirect_data_block == -1) {
-                    inode->i_indirect_data_block = data_block_alloc();
-                }
-
-                int *indirect_block = (int*)data_block_get(inode->i_indirect_data_block);
-                indirect_block[block_index - (NUMBER_DIRECT_BLOCKS - 1)] = data_block_alloc();
-            } 
+            /* Allocate new block when the current block is gonna be filled */
+            inode_datablock_alloc(inode, block_index);
         }
     }
 
-    void *block = NULL;
-    if(block_index < NUMBER_DIRECT_BLOCKS) {
-        block = data_block_get(inode->i_direct_data_blocks[block_index]);
-    } else {
-        int *indirect_block = (int*)data_block_get(inode->i_indirect_data_block);
-        block = data_block_get(indirect_block[block_index - NUMBER_DIRECT_BLOCKS]);
-    }
-
-    if (block == NULL) {
+    void* block = inode_datablock_get(inode, block_index);
+    if(block == NULL) {
         return -1;
     }
     /*
@@ -230,15 +215,8 @@ ssize_t tfs_read_block(open_file_entry_t *file, inode_t *inode, void *buffer, si
         return 0;
     }
 
-    void *block = NULL;
-    if(block_index < NUMBER_DIRECT_BLOCKS) {
-        block = data_block_get(inode->i_direct_data_blocks[block_index]);
-    } else {
-        int *indirect_block = (int*)data_block_get(inode->i_indirect_data_block);
-        block = data_block_get(indirect_block[block_index - NUMBER_DIRECT_BLOCKS]);
-    }
-
-    if (block == NULL) {
+    void *block = inode_datablock_get(inode, block_index);
+    if(block == NULL) {
         return -1;
     }
 
