@@ -14,6 +14,7 @@
 typedef struct {
     char d_name[MAX_FILE_NAME];
     int d_inumber;
+    pthread_rwlock_t rwlock;
 } dir_entry_t;
 
 typedef enum { T_FILE, T_DIRECTORY } inode_type;
@@ -38,6 +39,7 @@ typedef enum { FREE = 0, TAKEN = 1 } allocation_state_t;
 typedef struct {
     int of_inumber;
     size_t of_offset;
+    pthread_rwlock_t rwlock;
 } open_file_entry_t;
 
 #define MAX_DIR_ENTRIES (BLOCK_SIZE / sizeof(dir_entry_t))

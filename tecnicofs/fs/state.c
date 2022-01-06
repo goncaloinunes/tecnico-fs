@@ -18,11 +18,12 @@ pthread_rwlock_t inode_table_rwlock;
 /* Data blocks */
 static char fs_data[BLOCK_SIZE * DATA_BLOCKS];
 static char free_blocks[DATA_BLOCKS];
+pthread_rwlock_t fs_data_rwlock;
 
 /* Volatile FS state */
-
 static open_file_entry_t open_file_table[MAX_OPEN_FILES];
 static char free_open_file_entries[MAX_OPEN_FILES];
+pthread_rwlock_t open_file_table_rwlock;
 
 static inline bool valid_inumber(int inumber) {
     return inumber >= 0 && inumber < INODE_TABLE_SIZE;
@@ -85,14 +86,18 @@ void state_init() {
     for (size_t i = 0; i < INODE_TABLE_SIZE; i++) {
         freeinode_ts[i] = FREE;
     }
+    pthread_rwlock_init(&inode_table_rwlock, NULL);
 
     for (size_t i = 0; i < DATA_BLOCKS; i++) {
         free_blocks[i] = FREE;
     }
+    pthread_rwlock_init(&fs_data_rwlock, NULL);
 
     for (size_t i = 0; i < MAX_OPEN_FILES; i++) {
         free_open_file_entries[i] = FREE;
     }
+    pthread_rwlock_init(&open_file_table_rwlock, NULL);
+    
 }
 
 void state_destroy() { /* nothing to do */
@@ -118,6 +123,7 @@ int inode_create(inode_type n_type) {
             insert_delay(); // simulate storage access delay (to i-node)
             inode_table[inumber].i_node_type = n_type;
             inode_table[inumber].i_size = 0; // Initiliaze the size of the inode
+            pthread_rwlock_init(&inode_table[inumber].rwlock, NULL); // Initialize the inode's read-write lock
 
             if (n_type == T_DIRECTORY) {
                 /* Initializes directory (filling its blocks with empty
@@ -181,6 +187,7 @@ int inode_delete(int inumber) {
     }
 
     freeinode_ts[inumber] = FREE;
+    pthread_rwlock_destroy(&(inode_table[inumber].rwlock));
 
     /* TODO: handle non-empty directories (either return error, or recursively
      * delete children */
