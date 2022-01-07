@@ -34,7 +34,16 @@ int tfs_lookup(char const *name) {
     // skip the initial '/' character
     name++;
 
-    return find_in_dir(ROOT_DIR_INUM, name);
+    
+    lock_inode_table('r');
+    pthread_rwlock_rdlock(&(inode_get(ROOT_DIR_INUM))->rwlock);
+
+    int ret = find_in_dir(ROOT_DIR_INUM, name);
+
+    pthread_rwlock_unlock(&(inode_get(ROOT_DIR_INUM))->rwlock);
+    unlock_inode_table();
+
+    return ret;
 }
 
 int tfs_open(char const *name, int flags) {
@@ -47,13 +56,16 @@ int tfs_open(char const *name, int flags) {
     }
 
     inum = tfs_lookup(name);
+
     if (inum >= 0) {
         /* The file already exists */
+        
+        lock_inode_table('r');
         inode_t *inode = inode_get(inum);
         if (inode == NULL) {
             return -1;
         }
-
+        pthread_rwlock_rdlock(&(inode->rwlock));
         /* Trucate (if requested) */
         if (flags & TFS_O_TRUNC) {
             if (inode->i_size > 0) {
@@ -69,27 +81,39 @@ int tfs_open(char const *name, int flags) {
         } else {
             offset = 0;
         }
+
+        pthread_rwlock_unlock(&(inode->rwlock));
+        unlock_inode_table();
+
     } else if (flags & TFS_O_CREAT) {
         /* The file doesn't exist; the flags specify that it should be created*/
         /* Create inode */
+        lock_inode_table('w');
         inum = inode_create(T_FILE);
+        
         if (inum == -1) {
             return -1;
         }
         /* Add entry in the root directory */
+        pthread_rwlock_wrlock(&(inode_get(inum)->rwlock));
         if (add_dir_entry(ROOT_DIR_INUM, inum, name + 1) == -1) {
             inode_delete(inum);
             return -1;
         }
         offset = 0;
+        pthread_rwlock_unlock(&(inode_get(inum)->rwlock));
+        unlock_inode_table();
     } else {
         return -1;
     }
 
     /* Finally, add entry to the open file table and
      * return the corresponding handle */
-    return add_to_open_file_table(inum, offset);
+    lock_open_file_table('w');
+    int ret = add_to_open_file_table(inum, offset);
+    unlock_open_file_table();
 
+    return ret;
     /* Note: for simplification, if file was created with TFS_O_CREAT and there
      * is an error adding an entry to the open file table, the file is not
      * opened but it remains created */
@@ -165,17 +189,21 @@ ssize_t tfs_write(int fhandle, void const *buffer, size_t len) {
         return 0;
     }
 
+    lock_open_file_table_entry('w', fhandle);
     open_file_entry_t *file = get_open_file_entry(fhandle);
     if (file == NULL) {
         return -1;
     }
+    
 
     /* From the open file table entry, we get the inode */
+    lock_inode_table('r');
     inode_t *inode = inode_get(file->of_inumber);
     if (inode == NULL) {
         return -1;
     }
-
+    unlock_inode_table();
+    
     
     
     size_t block_offset = file->of_offset % BLOCK_SIZE;
@@ -191,6 +219,8 @@ ssize_t tfs_write(int fhandle, void const *buffer, size_t len) {
     printf("blocks_to_use: %ld\n", blocks_to_use);
     puts("*******************");
     */
+    pthread_rwlock_wrlock(&(inode->rwlock));
+    
     for(size_t i = 0; i < blocks_to_use; i++) {
         bytes_written = tfs_write_block(file, inode, buffer + total_bytes_written, len - (size_t)total_bytes_written);
         if(bytes_written < 0) {
@@ -200,7 +230,9 @@ ssize_t tfs_write(int fhandle, void const *buffer, size_t len) {
         total_bytes_written += bytes_written;
        
     }
-
+    
+    pthread_rwlock_unlock(&(inode->rwlock));
+    unlock_open_file_table_entry(fhandle);
     return total_bytes_written;
 }
 
@@ -241,18 +273,22 @@ ssize_t tfs_read(int fhandle, void *buffer, size_t len) {
         return 0;
     }
 
+    lock_open_file_table_entry('r', fhandle);
     open_file_entry_t *file = get_open_file_entry(fhandle);
     if (file == NULL) {
         return -1;
     }
 
     /* From the open file table entry, we get the inode */
+    lock_inode_table('r');
     inode_t *inode = inode_get(file->of_inumber);
     if (inode == NULL) {
         return -1;
     }
-
+    unlock_inode_table();
+   
     /* Determine how many bytes to read */
+    pthread_rwlock_rdlock(&(inode->rwlock));
     size_t to_read = inode->i_size - file->of_offset;
     if (to_read > len) {
         to_read = len;
@@ -275,6 +311,8 @@ ssize_t tfs_read(int fhandle, void *buffer, size_t len) {
         total_bytes_read += bytes_read;
     }
 
+    pthread_rwlock_unlock(&(inode->rwlock));
+    unlock_open_file_table_entry(fhandle);
     return total_bytes_read;
 }
 

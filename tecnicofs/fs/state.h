@@ -48,6 +48,14 @@ size_t get_number_direct_blocks_used(inode_t* inode);
 size_t get_number_indirect_blocks_used(inode_t* inode);
 size_t get_number_total_blocks_used(inode_t* inode);
 
+void lock_inode_table(char arg);
+void lock_open_file_table(char arg);
+void lock_open_file_table_entry(char arg, int i);
+void unlock_inode_table();
+void unlock_open_file_table();
+void unlock_open_file_table_entry(int i);
+
+
 void state_init();
 void state_destroy();
 
