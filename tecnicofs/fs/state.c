@@ -18,7 +18,7 @@ pthread_rwlock_t inode_table_rwlock;
 /* Data blocks */
 static char fs_data[BLOCK_SIZE * DATA_BLOCKS];
 static char free_blocks[DATA_BLOCKS];
-pthread_mutex_t fs_data_mutex;
+pthread_mutex_t free_blocks_mutex;
 
 /* Volatile FS state */
 static open_file_entry_t open_file_table[MAX_OPEN_FILES];
@@ -136,7 +136,7 @@ void state_init() {
     for (size_t i = 0; i < DATA_BLOCKS; i++) {
         free_blocks[i] = FREE;
     }
-    pthread_mutex_init(&fs_data_mutex, NULL);
+    pthread_mutex_init(&free_blocks_mutex, NULL);
 
     for (size_t i = 0; i < MAX_OPEN_FILES; i++) {
         free_open_file_entries[i] = FREE;
@@ -414,7 +414,7 @@ int find_in_dir(int inumber, char const *sub_name) {
  * Returns: block index if successful, -1 otherwise
  */
 int data_block_alloc() {
-    pthread_mutex_lock(&fs_data_mutex);
+    pthread_mutex_lock(&free_blocks_mutex);
     for (int i = 0; i < DATA_BLOCKS; i++) {
         if (i * (int) sizeof(allocation_state_t) % BLOCK_SIZE == 0) {
             insert_delay(); // simulate storage access delay to free_blocks
@@ -422,12 +422,12 @@ int data_block_alloc() {
 
         if (free_blocks[i] == FREE) {
             free_blocks[i] = TAKEN;
-            pthread_mutex_unlock(&fs_data_mutex);
+            pthread_mutex_unlock(&free_blocks_mutex);
             return i;
         }
     }
 
-    pthread_mutex_lock(&fs_data_mutex);
+    pthread_mutex_lock(&free_blocks_mutex);
     return -1;
 }
 
@@ -442,9 +442,9 @@ int data_block_free(int block_number) {
     }
 
     insert_delay(); // simulate storage access delay to free_blocks
-    pthread_mutex_lock(&fs_data_mutex);
+    pthread_mutex_lock(&free_blocks_mutex);
     free_blocks[block_number] = FREE;
-    pthread_mutex_unlock(&fs_data_mutex);
+    pthread_mutex_unlock(&free_blocks_mutex);
     return 0;
 }
 
@@ -490,11 +490,13 @@ int add_to_open_file_table(int inumber, size_t offset) {
  * Returns 0 is success, -1 otherwise
  */
 int remove_from_open_file_table(int fhandle) {
+    pthread_rwlock_wrlock(&open_file_table_rwlock);
     if (!valid_file_handle(fhandle) ||
         free_open_file_entries[fhandle] != TAKEN) {
         return -1;
     }
     free_open_file_entries[fhandle] = FREE;
+    pthread_rwlock_unlock(&open_file_table_rwlock);
     return 0;
 }
 

@@ -132,9 +132,7 @@ ssize_t tfs_write_block(open_file_entry_t *file, inode_t *inode, void const *buf
         return -1;
     }
 
-    if(to_write <= 0) {
-        return 0;
-    }
+ 
 
     if(inode->i_size == 0) {
         /* If empty file, allocate new block */
@@ -175,29 +173,34 @@ ssize_t tfs_write_block(open_file_entry_t *file, inode_t *inode, void const *buf
     
     /* The offset associated with the file handle is
         * incremented accordingly */
+    
     file->of_offset += to_write;
     if (file->of_offset > inode->i_size) {
         inode->i_size = file->of_offset;
     }
+
+    //printf("%ld\n", inode->i_size);
     
     return (ssize_t)to_write;
 }
 
 
 ssize_t tfs_write(int fhandle, void const *buffer, size_t len) {
-    if(len == 0) {
-        return 0;
-    }
 
+    
     lock_open_file_table_entry('w', fhandle);
+    lock_inode_table('r');
+
     open_file_entry_t *file = get_open_file_entry(fhandle);
+    //printf("pointer: %p\n", file);
+    //printf("of_offset: %ld\n", file->of_offset);
     if (file == NULL) {
         return -1;
     }
     
 
     /* From the open file table entry, we get the inode */
-    lock_inode_table('r');
+    
     inode_t *inode = inode_get(file->of_inumber);
     if (inode == NULL) {
         return -1;
@@ -205,22 +208,15 @@ ssize_t tfs_write(int fhandle, void const *buffer, size_t len) {
     unlock_inode_table();
     
     
-    
     size_t block_offset = file->of_offset % BLOCK_SIZE;
     size_t blocks_to_use = ((len + block_offset -1) / BLOCK_SIZE) + 1;
-    //size_t blocks_to_use = (file->of_offset + len) / BLOCK_SIZE + 1;
     ssize_t bytes_written = 0;
     ssize_t total_bytes_written = 0;
-    /*
-    puts("");
-    puts("*******************");
-    printf("len: %ld\n", len);
-    printf("BLOCK_SIZE: %d\n", BLOCK_SIZE);
-    printf("blocks_to_use: %ld\n", blocks_to_use);
-    puts("*******************");
-    */
+    
+
     pthread_rwlock_wrlock(&(inode->rwlock));
     
+
     for(size_t i = 0; i < blocks_to_use; i++) {
         bytes_written = tfs_write_block(file, inode, buffer + total_bytes_written, len - (size_t)total_bytes_written);
         if(bytes_written < 0) {
@@ -282,10 +278,11 @@ ssize_t tfs_read(int fhandle, void *buffer, size_t len) {
     /* From the open file table entry, we get the inode */
     lock_inode_table('r');
     inode_t *inode = inode_get(file->of_inumber);
+    unlock_inode_table();
     if (inode == NULL) {
         return -1;
     }
-    unlock_inode_table();
+    
    
     /* Determine how many bytes to read */
     pthread_rwlock_rdlock(&(inode->rwlock));
