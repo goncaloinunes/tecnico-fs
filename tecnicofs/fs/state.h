@@ -40,7 +40,6 @@ typedef struct {
     int of_inumber;
     size_t of_offset;
     int append;
-    pthread_rwlock_t rwlock;
 } open_file_entry_t;
 
 #define MAX_DIR_ENTRIES (BLOCK_SIZE / sizeof(dir_entry_t))
