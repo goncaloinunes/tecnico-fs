@@ -259,7 +259,9 @@ ssize_t tfs_read(int fhandle, void *buffer, size_t len) {
     }
 
     /* From the open file table entry, we get the inode */
+    lock_inode_table('r');
     inode_t *inode = inode_get(file->of_inumber);
+    unlock_inode_table();
     if (inode == NULL) {
         unlock_open_file_table_entry(fhandle);
         return -1;

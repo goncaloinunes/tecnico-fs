@@ -2,7 +2,7 @@
 #include <assert.h>
 #include <string.h>
 
-#define SIZE 120000
+#define SIZE 12000
 
 #define PATH "/f1"
 
@@ -39,7 +39,6 @@ int main() {
     memset(output1, '\0', SIZE);
     memset(output2, '\0', SIZE);
 
-
     assert(tfs_init() != -1);
 
     int fd = tfs_open(path, TFS_O_CREAT);
@@ -58,7 +57,7 @@ int main() {
     pthread_join(tid[0], NULL);
     pthread_join(tid[1], NULL);
 
-    assert((strlen(output1) == SIZE-1 && strlen(output2) == 0) || (strlen(output2) == SIZE-1 && strlen(output2) == 0));    
+    assert((strlen(output1) == SIZE-1 && strlen(output2) == 0) || (strlen(output2) == SIZE-1 && strlen(output1) == 0));    
 
     printf("Sucessful test\n");
 
