@@ -5,13 +5,10 @@
 #define COUNT 400
 #define SIZE 250
 
-#define PATH "/f1"
 
 /**
-   This test fills in a new file up to 10 blocks via multiple writes, 
-   where some calls to tfs_write may imply filling in 2 consecutive blocks, 
-   then checks if the file contents are as expected. 
-   This is done in two simultanious threads.
+   This test creates two threads and both open the same file simultaneously.
+   The file handlers returned by the tfs_open operation have to be diferent for the test to be successfull.
  */
 
 char* path = "/f1";

@@ -130,6 +130,7 @@ static void insert_delay() {
 void state_init() {
     for (size_t i = 0; i < INODE_TABLE_SIZE; i++) {
         freeinode_ts[i] = FREE;
+        pthread_rwlock_init(&(inode_table[i].rwlock), NULL);
     }
     pthread_rwlock_init(&inode_table_rwlock, NULL);
 
@@ -146,7 +147,21 @@ void state_init() {
     
 }
 
-void state_destroy() { /* nothing to do */
+void state_destroy() { 
+    for (size_t i = 0; i < INODE_TABLE_SIZE; i++) {
+        pthread_rwlock_destroy(&(inode_table[i].rwlock));
+    }
+    pthread_rwlock_destroy(&inode_table_rwlock);
+
+
+    pthread_mutex_destroy(&free_blocks_mutex);
+
+    for (size_t i = 0; i < MAX_OPEN_FILES; i++) {
+        free_open_file_entries[i] = FREE;
+        pthread_rwlock_destroy(&open_file_table_entries_rwlock[i]);
+    }
+
+    pthread_rwlock_destroy(&open_file_table_rwlock);
 }
 
 /*
@@ -166,7 +181,6 @@ int inode_create(inode_type n_type) {
         if (freeinode_ts[inumber] == FREE) {
             /* Found a free entry, so takes it for the new i-node*/
             insert_delay(); // simulate storage access delay (to i-node)
-            pthread_rwlock_init(&inode_table[inumber].rwlock, NULL); // Initialize the inode's read-write lock
             pthread_rwlock_wrlock(&inode_table[inumber].rwlock);
             inode_table[inumber].i_node_type = n_type;
             inode_table[inumber].i_size = 0; // Initiliaze the size of the inode
