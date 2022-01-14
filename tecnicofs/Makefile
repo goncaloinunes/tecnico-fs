@@ -14,7 +14,7 @@ INCLUDES = $(addprefix -I, $(INCLUDE_DIRS))
 SOURCES  := $(wildcard */*.c)
 HEADERS  := $(wildcard */*.h)
 OBJECTS  := $(SOURCES:.c=.o)
-TARGET_EXECS := tests/test1 tests/copy_to_external_simple tests/copy_to_external_errors tests/write_10_blocks_spill tests/write_10_blocks_simple tests/write_more_than_10_blocks_simple tests/write_more_than_10_blocks_spill tests/write_max_blocks_simple tests/write_max_blocks_spill tests/threads_read_same_fhandle tests/threads_write_same_fhandle tests/threads_fhandle
+TARGET_EXECS := tests/test1 tests/copy_to_external_simple tests/copy_to_external_errors tests/write_10_blocks_spill tests/write_10_blocks_simple tests/write_more_than_10_blocks_simple tests/write_more_than_10_blocks_spill tests/write_max_blocks_simple tests/write_max_blocks_spill tests/threads_read_same_fhandle tests/threads_write_same_file tests/threads_fhandle
 
 # VPATH is a variable used by Makefile which finds *sources* and makes them available throughout the codebase
 # vpath %.h <DIR> tells make to look for header files in <DIR>
@@ -77,7 +77,7 @@ tests/write_more_than_10_blocks_simple: tests/write_more_than_10_blocks_simple.o
 tests/write_more_than_10_blocks_spill: tests/write_more_than_10_blocks_spill.o fs/operations.o fs/state.o
 tests/write_max_blocks_simple: tests/write_max_blocks_simple.o fs/operations.o fs/state.o
 tests/write_max_blocks_spill: tests/write_max_blocks_spill.o fs/operations.o fs/state.o
-tests/threads_write_same_fhandle: tests/threads_write_same_fhandle.o fs/operations.o fs/state.o
+tests/threads_write_same_file: tests/threads_write_same_file.o fs/operations.o fs/state.o
 tests/threads_read_same_fhandle: tests/threads_read_same_fhandle.o fs/operations.o fs/state.o
 tests/threads_fhandle: tests/threads_fhandle fs/operations.o fs/state.o
 

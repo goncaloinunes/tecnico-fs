@@ -49,6 +49,7 @@ int tfs_lookup(char const *name) {
 int tfs_open(char const *name, int flags) {
     int inum;
     size_t offset;
+    int append = 0;
 
     /* Checks if the path name is valid */
     if (!valid_pathname(name)) {
@@ -78,6 +79,7 @@ int tfs_open(char const *name, int flags) {
         /* Determine initial offset */
         if (flags & TFS_O_APPEND) {
             offset = inode->i_size;
+            append = 1;
         } else {
             offset = 0;
         }
@@ -110,7 +112,7 @@ int tfs_open(char const *name, int flags) {
     /* Finally, add entry to the open file table and
      * return the corresponding handle */
     lock_open_file_table('w');
-    int ret = add_to_open_file_table(inum, offset);
+    int ret = add_to_open_file_table(inum, offset, append);
     unlock_open_file_table();
 
     return ret;
@@ -188,13 +190,18 @@ ssize_t tfs_write(int fhandle, void const *buffer, size_t len) {
         return -1;
     }
     unlock_inode_table();
+
+    pthread_rwlock_wrlock(&(inode->rwlock));
+
+    if(file->append == 1) {
+        file->of_offset = inode->i_size;
+    }
     
     size_t block_offset = file->of_offset % BLOCK_SIZE;
     size_t blocks_to_use = ((len + block_offset -1) / BLOCK_SIZE) + 1;
     ssize_t bytes_written = 0;
     ssize_t total_bytes_written = 0;
     
-    pthread_rwlock_wrlock(&(inode->rwlock));
     
     for(size_t i = 0; i < blocks_to_use; i++) {
         bytes_written = tfs_write_block(file, inode, buffer + total_bytes_written, len - (size_t)total_bytes_written);
@@ -248,9 +255,8 @@ ssize_t tfs_read(int fhandle, void *buffer, size_t len) {
     }
 
     /* From the open file table entry, we get the inode */
-    lock_inode_table('r');
     inode_t *inode = inode_get(file->of_inumber);
-    unlock_inode_table();
+    
     if (inode == NULL) {
         return -1;
     }
