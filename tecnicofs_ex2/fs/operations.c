@@ -7,6 +7,11 @@
 
 static pthread_mutex_t single_global_lock;
 
+static unsigned int number_open_files = 0;
+static pthread_mutex_t number_open_files_mutex = PTHREAD_MUTEX_INITIALIZER;
+static bool destroy_after_all_closed = false;
+static pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
+
 int tfs_init() {
     state_init();
 
@@ -27,6 +32,7 @@ int tfs_destroy() {
     if (pthread_mutex_destroy(&single_global_lock) != 0) {
         return -1;
     }
+
     return 0;
 }
 
@@ -35,7 +41,15 @@ static bool valid_pathname(char const *name) {
 }
 
 int tfs_destroy_after_all_closed() {
-    /* TO DO: implement this */
+
+    pthread_mutex_lock(&number_open_files_mutex);
+    destroy_after_all_closed = true;
+
+    while(number_open_files > 0) {
+        pthread_cond_wait(&cond, &number_open_files_mutex);
+    }
+    pthread_mutex_unlock(&number_open_files_mutex);
+    tfs_destroy();
     return 0;
 }
 
@@ -105,7 +119,17 @@ static int _tfs_open_unsynchronized(char const *name, int flags) {
 
     /* Finally, add entry to the open file table and
      * return the corresponding handle */
-    return add_to_open_file_table(inum, offset);
+
+    int ret = add_to_open_file_table(inum, offset);
+    if(ret < 0) {
+        return -1;
+    }
+
+    pthread_mutex_lock(&number_open_files_mutex);
+    number_open_files++;
+    pthread_mutex_unlock(&number_open_files_mutex);
+
+    return ret;
 
     /* Note: for simplification, if file was created with TFS_O_CREAT and there
      * is an error adding an entry to the open file table, the file is not
@@ -113,6 +137,12 @@ static int _tfs_open_unsynchronized(char const *name, int flags) {
 }
 
 int tfs_open(char const *name, int flags) {
+    pthread_mutex_lock(&number_open_files_mutex);
+    if(destroy_after_all_closed) {
+        return -1;
+    }
+    pthread_mutex_unlock(&number_open_files_mutex);
+
     if (pthread_mutex_lock(&single_global_lock) != 0)
         return -1;
     int ret = _tfs_open_unsynchronized(name, flags);
@@ -128,6 +158,16 @@ int tfs_close(int fhandle) {
     int r = remove_from_open_file_table(fhandle);
     if (pthread_mutex_unlock(&single_global_lock) != 0)
         return -1;
+
+    if(r < 0) {
+        return -1;
+    }
+
+    pthread_mutex_lock(&number_open_files_mutex);
+    number_open_files--;
+    pthread_mutex_unlock(&number_open_files_mutex);
+
+    pthread_cond_broadcast(&cond);
 
     return r;
 }

@@ -21,7 +21,7 @@ void *fn_thread(void *arg) {
     (void)
         arg; /* Since arg is not used, this line prevents a compiler warning */
 
-    sleep(10);
+    sleep(1);
 
     /* set *before* closing the file, so that it is set before
        tfs_destroy_after_all_close returns in the main thread
@@ -46,6 +46,7 @@ int main() {
     assert(closed_file == 1);
 
     // No need to join thread
+    pthread_join(t, NULL);
     printf("Successful test.\n");
 
     return 0;
