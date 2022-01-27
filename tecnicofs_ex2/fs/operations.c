@@ -32,7 +32,6 @@ int tfs_destroy() {
     if (pthread_mutex_destroy(&single_global_lock) != 0) {
         return -1;
     }
-
     return 0;
 }
 
@@ -50,6 +49,7 @@ int tfs_destroy_after_all_closed() {
     }
     pthread_mutex_unlock(&number_open_files_mutex);
     tfs_destroy();
+
     return 0;
 }
 
@@ -119,7 +119,6 @@ static int _tfs_open_unsynchronized(char const *name, int flags) {
 
     /* Finally, add entry to the open file table and
      * return the corresponding handle */
-
     int ret = add_to_open_file_table(inum, offset);
     if(ret < 0) {
         return -1;
