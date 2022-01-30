@@ -191,7 +191,7 @@ static ssize_t _tfs_write_unsynchronized(int fhandle, void const *buffer,
 
     if (to_write > 0) {
         if (inode->i_size == 0) {
-            /* If empty file, allocate new block */
+            /* If empty file, allocate  block */
             inode->i_data_block = data_block_alloc();
         }
 

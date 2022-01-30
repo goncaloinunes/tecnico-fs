@@ -38,7 +38,7 @@ typedef struct {
 
 typedef struct {
     int session_id;
-    char client_pipe_name[MAX_FILE_NAME];
+    char name[MAX_FILE_NAME];
     int flags;
 } open_args_t;
 

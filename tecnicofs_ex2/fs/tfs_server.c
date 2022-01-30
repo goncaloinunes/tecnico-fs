@@ -1,11 +1,11 @@
 #include "tfs_server.h"
 
 
-char clients[MAX_CLIENTS][MAX_FILE_NAME];
+client_t clients[MAX_CLIENTS];
 
 int find_free_client() {
     for(int i = 0; i < MAX_CLIENTS; i++) {
-        if(clients[i][0] == '\0') {
+        if(clients[i].pipe_name[0] == '\0') {
             return i;
         }
     }
@@ -20,32 +20,119 @@ void initialize_clients() {
 }
 
 void free_client(int client) {
-    memset(clients[client], '\0', MAX_FILE_NAME);
+    memset(clients[client].pipe_name, '\0', MAX_FILE_NAME);
+    clients[client].fd = -1;
 }
 
-int set_client(char path[MAX_FILE_NAME]) {
+int set_client(char path[MAX_FILE_NAME], int fd) {
     int client = find_free_client();
     if(client < 0) {
         return -1;
     }
 
-    memcpy(clients[client], path, MAX_FILE_NAME);
+    memcpy(clients[client].pipe_name, path, MAX_FILE_NAME);
+    clients[client].fd = fd;
 
     return 0;
 }
 
 
 int handle_mount(mount_args_t args) {
-    int session_id = set_client(args.client_pipe_name);
-    printf("cliente_pipe_name: %s\n", args.client_pipe_name);
-
     int fd = open(args.client_pipe_name, O_WRONLY);
     if(fd < 0) {
         return -1;
     }
-    printf("Pipe do cliente aberta!\n");
+
+    int session_id = set_client(args.client_pipe_name, fd);
 
     if(write(fd, &session_id, sizeof(session_id)) < 0) {
+        return -1;
+    }
+
+    return 0;
+}
+
+
+int handle_unmount(unmount_args_t args) {
+    if(close(clients[args.session_id].fd) < 0) {
+        return -1;
+    }
+
+    free_client(args.session_id);
+    printf("Unmounted: %d\n", args.session_id);
+
+    return 0;
+}
+
+
+int handle_open(open_args_t args) {
+    int fd = tfs_open(args.name, args.flags);
+
+    if(write(clients[args.session_id].fd, &fd, sizeof(fd)) < 0) {
+        return -1;
+    }
+
+    printf("Openned: %s\n", args.name);
+    printf("fd: %d\n", fd);
+    printf("flags: %d\n", args.flags);
+
+    return 0;
+}
+
+
+// int handle_write(write_args_t args, int fd) {
+//     char* ptr = (char*)malloc(args.len * sizeof(char));
+//     if(ptr == NULL) {
+//         return -1;
+//     }
+
+//     if(read(fd, ptr, args.len * sizeof(char)) < 0) {
+//         return -1;
+//     }
+
+//     tfs_write
+
+//     free(ptr);
+//     return 0;
+// }
+
+
+int handle_write(write_args_t args, int fd) {
+
+    char buffer[BUFFER_SIZE];
+    memset(buffer, 0, sizeof(buffer));
+
+    int total_bytes_read = 0;
+    int bytes_to_read;
+    int bytes_read;
+
+    printf("fhandle: %d\n", args.fhandle);
+    printf("session_id: %d\n", args.session_id);
+
+    while(total_bytes_read < args.len) {
+        if(BUFFER_SIZE > args.len-(size_t)total_bytes_read) {
+            bytes_to_read = (int)(args.len-(size_t)total_bytes_read);
+        } else {
+            bytes_to_read = BUFFER_SIZE;
+        }
+
+        bytes_read = (int)read(fd, buffer, (size_t)bytes_to_read);
+        printf("bytes_to_read: %d\n", bytes_read);
+        printf("buffer: %s", buffer);
+        if(bytes_read < 0) {
+            return -1;
+        }
+
+        total_bytes_read += bytes_read;
+
+        if(tfs_write(args.fhandle, buffer, (size_t)bytes_to_read) < 0) {
+            total_bytes_read = -1;
+            break;
+        }
+
+    }
+
+    if(write(clients[args.session_id].fd, &total_bytes_read, sizeof(total_bytes_read)) < 0) {
         return -1;
     }
 
@@ -67,32 +154,31 @@ int main(int argc, char **argv) {
     printf("Starting TecnicoFS server with pipe called %s\n", pipename);
 
     initialize_clients();
+    tfs_init();
 
     if(mkfifo(pipename, 0777) != 0) {
         fprintf(stderr, "Erro ao criar pipe!");
     }
 
-   while(1) {
-       fd = open(pipename, O_RDONLY);
-       printf("Pipe aberta\n");
-       if(fd < 0) {
-           fprintf(stderr, "Erro ao abrir pipe!");
-       }
+    while(1) {
+        fd = open(pipename, O_RDONLY);
+        if(fd < 0) {
+            fprintf(stderr, "Erro ao abrir pipe!");
+        }
 
-       if(read(fd, &op_code, 1) <= 0) {
-           continue;
-       }
-           
-       
-
-       switch (op_code) {   
+        if(read(fd, &op_code, 1) <= 0) {
+            continue;
+        }
+            
+        
+        switch (op_code) {   
 
             case TFS_OP_CODE_MOUNT: ;
                 mount_args_t mount_args;
                 if(read(fd, &mount_args, sizeof(mount_args_t)) < 0) {
                     break;
                 }
-                printf("Mensagem Recebida: %s\n", mount_args.client_pipe_name);
+
                 handle_mount(mount_args);
                 break;
 
@@ -102,6 +188,7 @@ int main(int argc, char **argv) {
                     break;
                 }
 
+                handle_unmount(unmount_args);
                 break;
 
             case TFS_OP_CODE_OPEN: ;
@@ -109,6 +196,8 @@ int main(int argc, char **argv) {
                 if(read(fd, &open_args, sizeof(open_args_t)) < 0) {
                     break;
                 }
+
+                handle_open(open_args);
                 break;
 
             case TFS_OP_CODE_CLOSE: ;
@@ -123,6 +212,8 @@ int main(int argc, char **argv) {
                 if(read(fd, &write_args, sizeof(write_args_t)) < 0) {
                     break;
                 }
+                puts("WRITE!!");
+                handle_write(write_args, fd);
                 break;
 
             case TFS_OP_CODE_READ: ;
@@ -144,7 +235,7 @@ int main(int argc, char **argv) {
         }
 
         close(fd);   
-   }
+    }
 
     return 0;
 }
