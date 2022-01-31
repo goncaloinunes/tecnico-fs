@@ -1,10 +1,12 @@
 #include "tecnicofs_client_api.h"
 #include <stdio.h>
 
+
 int session_id = -1;
 int fd_s = -1;
 int fd_c = -1;
 char client_pipe_name[MAX_FILE_NAME];
+
 
 int tfs_mount(char const *client_pipe_path, char const *server_pipe_path) {
     
@@ -18,7 +20,6 @@ int tfs_mount(char const *client_pipe_path, char const *server_pipe_path) {
         printf("Erro ao abrir Pipe do servidor\n");
         return -1;
     }
-
 
     char buffer[sizeof(char) + sizeof(mount_args_t)];
 
@@ -50,6 +51,7 @@ int tfs_mount(char const *client_pipe_path, char const *server_pipe_path) {
     return 0;
 }
 
+
 int tfs_unmount() {
     
     char buffer[sizeof(char) + sizeof(unmount_args_t)];
@@ -79,8 +81,8 @@ int tfs_unmount() {
     return 0;
 }
 
+
 int tfs_open(char const *name, int flags) {
-    
     char buffer[sizeof(char) + sizeof(open_args_t)];
 
     open_args_t args;
@@ -100,15 +102,36 @@ int tfs_open(char const *name, int flags) {
         return -1;
     }
 
-    printf("fd: %d\n", fd);
+    printf("Opened file with fd: %d\n", fd);
 
     return fd;
 }
 
+
 int tfs_close(int fhandle) {
-    /* TODO: Implement this */
-    return -1;
+    char buffer[sizeof(char) + sizeof(close_args_t)];
+
+    close_args_t args;
+    args.fhandle = fhandle;
+    args.session_id = session_id;
+
+    buffer[0] = TFS_OP_CODE_CLOSE;
+    memcpy(buffer+1, &args, sizeof(args));
+
+    if(write(fd_s, buffer, sizeof(buffer)) < 0) {
+        return -1;
+    }
+
+    int ret;
+    if(read(fd_c, &ret, sizeof(ret)) < 0) {
+        return -1;
+    }
+
+    printf("Closed file with fhandle: %d\n", fhandle);
+
+    return ret;
 }
+
 
 ssize_t tfs_write(int fhandle, void const *buffer, size_t len) {
     char buff[sizeof(char) + sizeof(write_args_t) + len * sizeof(char)];
@@ -131,14 +154,43 @@ ssize_t tfs_write(int fhandle, void const *buffer, size_t len) {
         return -1;
     }
 
+    printf("Wrote %d bytes: %s\n", bytes_written, (char*)buffer);
 
     return bytes_written;
 }
 
+
 ssize_t tfs_read(int fhandle, void *buffer, size_t len) {
-    /* TODO: Implement this */
-    return -1;
+    char buff[sizeof(char) + sizeof(read_args_t)];
+
+    read_args_t args;
+    args.fhandle = fhandle;
+    args.len = len;
+    args.session_id = session_id;
+
+    buff[0] = TFS_OP_CODE_READ;
+    memcpy(buff + 1, &args, sizeof(args));
+
+    if(write(fd_s, buff, sizeof(buff)) < 0) {
+        return -1;
+    }
+
+    int bytes_read;
+    if(read(fd_c, &bytes_read, sizeof(bytes_read)) < 0) {
+        return -1;
+    }
+    
+    if(bytes_read > 0) {
+        if(read(fd_c, buffer, (size_t)bytes_read) < 0) {
+            return -1;
+        }
+    }
+
+    printf("Read %d bytes: %s\n", bytes_read, (char*)buffer);
+
+    return bytes_read;
 }
+
 
 int tfs_shutdown_after_all_closed() {
     /* TODO: Implement this */

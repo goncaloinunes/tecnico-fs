@@ -49,6 +49,8 @@ int handle_mount(mount_args_t args) {
         return -1;
     }
 
+    printf("Mounted session number: %d\n", session_id);
+
     return 0;
 }
 
@@ -59,7 +61,8 @@ int handle_unmount(unmount_args_t args) {
     }
 
     free_client(args.session_id);
-    printf("Unmounted: %d\n", args.session_id);
+
+    printf("Unmounted session number: %d\n", args.session_id);
 
     return 0;
 }
@@ -72,11 +75,22 @@ int handle_open(open_args_t args) {
         return -1;
     }
 
-    printf("Openned: %s\n", args.name);
-    printf("fd: %d\n", fd);
-    printf("flags: %d\n", args.flags);
+    printf("Openned: %s with fhandle: %d\n", args.name, fd);
 
     return 0;
+}
+
+
+int handle_close(close_args_t args) {
+    int ret = tfs_close(args.fhandle);
+
+    if(write(clients[args.session_id].fd, &ret, sizeof(ret)) < 0) {
+        return -1;
+    }
+
+    printf("Closed file with fhandle: %d\n", args.fhandle);
+
+    return ret;
 }
 
 
@@ -98,7 +112,6 @@ int handle_open(open_args_t args) {
 
 
 int handle_write(write_args_t args, int fd) {
-
     char buffer[BUFFER_SIZE];
     memset(buffer, 0, sizeof(buffer));
 
@@ -106,8 +119,8 @@ int handle_write(write_args_t args, int fd) {
     int bytes_to_read;
     int bytes_read;
 
-    printf("fhandle: %d\n", args.fhandle);
-    printf("session_id: %d\n", args.session_id);
+    //printf("fhandle: %d\n", args.fhandle);
+    //printf("session_id: %d\n", args.session_id);
 
     while(total_bytes_read < args.len) {
         if(BUFFER_SIZE > args.len-(size_t)total_bytes_read) {
@@ -117,8 +130,8 @@ int handle_write(write_args_t args, int fd) {
         }
 
         bytes_read = (int)read(fd, buffer, (size_t)bytes_to_read);
-        printf("bytes_to_read: %d\n", bytes_read);
-        printf("buffer: %s", buffer);
+        //printf("bytes_to_read: %d\n", bytes_read);
+        //printf("buffer: %s", buffer);
         if(bytes_read < 0) {
             return -1;
         }
@@ -135,6 +148,40 @@ int handle_write(write_args_t args, int fd) {
     if(write(clients[args.session_id].fd, &total_bytes_read, sizeof(total_bytes_read)) < 0) {
         return -1;
     }
+
+    printf("Writing stuff... done!\n");
+
+    return 0;
+}
+
+
+int handle_read(read_args_t args) {
+    char* buffer = (char*) malloc(args.len * sizeof(char));
+    if(buffer == NULL) {
+        return -1;
+    }
+    memset(buffer, 0, args.len * sizeof(char));
+
+    int bytes_read;
+    
+    bytes_read = (int)tfs_read(args.fhandle, buffer, (size_t)args.len);
+    if(bytes_read < 0) {
+        free(buffer);
+        return -1;
+    }
+
+    char buff[sizeof(bytes_read) + (unsigned)bytes_read * sizeof(char)];
+
+    memcpy(buff, &bytes_read, sizeof(bytes_read));
+    memcpy(buff + sizeof(bytes_read), buffer, (unsigned)bytes_read);
+
+    if(write(clients[args.session_id].fd, &buff, sizeof(buff)) < 0) {
+        free(buffer);
+        return -1;
+    }
+
+    printf("Reading stuff... done!\n");
+    free(buffer);
 
     return 0;
 }
@@ -205,6 +252,8 @@ int main(int argc, char **argv) {
                 if(read(fd, &close_args, sizeof(close_args_t)) < 0) {
                     break;
                 }
+
+                handle_close(close_args);
                 break;   
 
             case TFS_OP_CODE_WRITE: ;
@@ -212,7 +261,7 @@ int main(int argc, char **argv) {
                 if(read(fd, &write_args, sizeof(write_args_t)) < 0) {
                     break;
                 }
-                puts("WRITE!!");
+                
                 handle_write(write_args, fd);
                 break;
 
@@ -221,6 +270,8 @@ int main(int argc, char **argv) {
                 if(read(fd, &read_args, sizeof(read_args_t)) < 0) {
                     break;
                 }
+
+                handle_read(read_args);
                 break;   
 
             case TFS_OP_CODE_SHUTDOWN_AFTER_ALL_CLOSED: ;
