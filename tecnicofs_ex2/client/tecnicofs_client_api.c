@@ -9,7 +9,7 @@ char client_pipe_name[MAX_FILE_NAME];
 
 
 int tfs_mount(char const *client_pipe_path, char const *server_pipe_path) {
-    
+    unlink(client_pipe_path);
     if(mkfifo(client_pipe_path, 0777) != 0) {
         printf("Erro ao abrir Pipe do cliente\n");
         return -1;
