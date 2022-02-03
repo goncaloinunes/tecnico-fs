@@ -193,6 +193,28 @@ ssize_t tfs_read(int fhandle, void *buffer, size_t len) {
 
 
 int tfs_shutdown_after_all_closed() {
-    /* TODO: Implement this */
-    return -1;
+    char buffer[sizeof(char) + sizeof(shutdown_args_t)];
+
+    shutdown_args_t args;
+    args.session_id = session_id;
+
+    buffer[0] = TFS_OP_CODE_SHUTDOWN_AFTER_ALL_CLOSED;
+    memcpy(buffer+1, &args, sizeof(args));
+
+    if(write(fd_s, buffer, sizeof(buffer)) < 0) {
+        return -1;
+    }
+
+    int ret;
+    if(read(fd_c, &ret, sizeof(ret)) < 0) {
+        return -1;
+    }
+    
+    if(unlink(client_pipe_name) < 0) {
+        return -1;
+    }
+
+    printf("Server is shutting down!\n");
+
+    return ret;
 }

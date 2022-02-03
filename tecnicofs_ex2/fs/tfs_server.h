@@ -34,6 +34,9 @@ void initialize_client(int client);
 void free_client(int client);
 int set_client(char path[MAX_FILE_NAME], int fd);
 int handle_mount(mount_args_t args);
+int handle_shutdown(shutdown_args_t args, char pipename[MAX_FILE_NAME], int fd);
+void free_clients();
 void *consumer(void *client_id);
+
 
 #endif // SERVER_H

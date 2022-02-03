@@ -164,9 +164,9 @@ int tfs_close(int fhandle) {
 
     pthread_mutex_lock(&number_open_files_mutex);
     number_open_files--;
+    pthread_cond_broadcast(&cond);
     pthread_mutex_unlock(&number_open_files_mutex);
 
-    pthread_cond_broadcast(&cond);
 
     return r;
 }

@@ -44,6 +44,32 @@ void initialize_client(int client) {
     }
 }
 
+
+void free_clients() {
+    for (int i = 0; i < MAX_CLIENTS; i++) {
+        free_client(i);
+        
+        pthread_mutex_lock(&clients[i].mutex);
+
+        close(clients[i].fd);
+
+        if(pthread_cond_destroy(&clients[i].consume) < 0) {
+            exit(EXIT_FAILURE);
+        }
+        
+        if(pthread_cond_destroy(&clients[i].produce) < 0) {
+            exit(EXIT_FAILURE);
+        }
+
+        pthread_mutex_unlock(&clients[i].mutex);
+
+        if(pthread_mutex_destroy(&clients[i].mutex) < 0) {
+            exit(EXIT_FAILURE);
+        }   
+    }
+}
+
+
 void free_client(int client) {
     
     pthread_mutex_lock(&clients[client].mutex);
@@ -55,18 +81,6 @@ void free_client(int client) {
     clients[client].prodptr = 0;
 
     pthread_mutex_unlock(&clients[client].mutex);
-    
-    // if(pthread_mutex_destroy(&clients[client].mutex) < 0) {
-    //     exit(EXIT_FAILURE);
-    // }
-
-    // if(pthread_cond_destroy(&clients[client].consume) < 0) {
-    //     exit(EXIT_FAILURE);
-    // }
-    
-    // if(pthread_cond_destroy(&clients[client].produce) < 0) {
-    //     exit(EXIT_FAILURE);
-    // }
 }
 
 
@@ -228,6 +242,29 @@ int handle_read(read_args_t args) {
     return 0;
 }
 
+int handle_shutdown(shutdown_args_t args, char pipename[MAX_FILE_NAME], int fd) {
+
+    printf("Request to shutdown from client: %d\n", args.session_id);
+
+    int ret = tfs_destroy_after_all_closed();
+
+    if(write(clients[args.session_id].fd, &ret, sizeof(ret)) < 0) {
+        return -1;
+    }
+
+    if(ret == 0) {
+        puts("Shutting down...");
+        free_clients();
+        close(fd);
+        unlink(pipename);
+        exit(EXIT_SUCCESS);
+    }
+
+    puts("Problem trying to shutdown! Resuming...");
+
+    return 0;
+}
+
 void *consumer(void *client_id) {
 
     int id = *(int *)client_id;
@@ -249,34 +286,34 @@ void *consumer(void *client_id) {
 
         switch (op_code) {
 
-        case TFS_OP_CODE_OPEN:;
+            case TFS_OP_CODE_OPEN:;
 
-            memcpy(&open_args, args + 1, sizeof(open_args));
+                memcpy(&open_args, args + 1, sizeof(open_args));
 
-            handle_open(open_args);
-            break;
+                handle_open(open_args);
+                break;
 
-        case TFS_OP_CODE_CLOSE:;
-            memcpy(&close_args, args + 1, sizeof(close_args));
+            case TFS_OP_CODE_CLOSE:;
+                memcpy(&close_args, args + 1, sizeof(close_args));
 
-            handle_close(close_args);
-            break;
+                handle_close(close_args);
+                break;
 
-        case TFS_OP_CODE_WRITE:;
-            memcpy(&write_args, args + 1, sizeof(write_args));
+            case TFS_OP_CODE_WRITE:;
+                memcpy(&write_args, args + 1, sizeof(write_args));
 
-            //handle_write(write_args, args + 1 + sizeof(write_args));
-            break;
+                //handle_write(write_args, args + 1 + sizeof(write_args));
+                break;
 
-        case TFS_OP_CODE_READ:;
-            memcpy(&read_args, args + 1, sizeof(read_args));
+            case TFS_OP_CODE_READ:;
+                memcpy(&read_args, args + 1, sizeof(read_args));
 
-            handle_read(read_args);
-            break;
-        
+                handle_read(read_args);
+                break;
+            
 
-        default:
-            break;
+            default:
+                break;
 
         }
 
@@ -412,6 +449,8 @@ int main(int argc, char **argv) {
             if (read(fd, &shutdown_args, sizeof(shutdown_args_t)) < 0) {
                 break;
             }
+
+            handle_shutdown(shutdown_args, pipename, fd);
             break;
 
         default:
