@@ -1,11 +1,13 @@
 #include "tfs_server.h"
 
+pthread_mutex_t clients_mutex = PTHREAD_MUTEX_INITIALIZER;
 static client_t clients[MAX_CLIENTS];
 static int ids[MAX_CLIENTS];
 
 int find_free_client() {
+
     for (int i = 0; i < MAX_CLIENTS; i++) {
-        if (clients[i].pipe_name[0] == '\0') {
+        if (clients[i].fd == -1) {
             return ids[i];
         }
     }
@@ -21,6 +23,8 @@ void initialize_clients() {
 }
 
 void initialize_client(int client) {
+
+
     memset(clients[client].pipe_name, '\0', MAX_FILE_NAME);
     clients[client].fd = -1;
     clients[client].count = 0;
@@ -42,6 +46,7 @@ void initialize_client(int client) {
     if(pthread_create(&clients[client].thread, NULL, consumer, &ids[client]) < 0) {
         exit(EXIT_FAILURE);
     }
+
 }
 
 
@@ -95,21 +100,27 @@ int set_client(char path[MAX_FILE_NAME], int fd) {
     clients[client].fd = fd;
     pthread_mutex_unlock(&clients[client].mutex);
 
-    return 0;
+    return client;
 }
 
 int handle_mount(mount_args_t args) {
+
+    pthread_mutex_lock(&clients_mutex);
+
     int fd = open(args.client_pipe_name, O_WRONLY);
     if (fd < 0) {
+        pthread_mutex_unlock(&clients_mutex);
         return -1;
     }
 
     int session_id = set_client(args.client_pipe_name, fd);
 
     if (write(fd, &session_id, sizeof(session_id)) < 0) {
+        pthread_mutex_unlock(&clients_mutex);
         return -1;
     }
 
+    pthread_mutex_unlock(&clients_mutex);
     printf("Mounted session number: %d\n", session_id);
 
     return 0;
@@ -142,7 +153,7 @@ int handle_open(open_args_t args) {
 int handle_close(close_args_t args) {
     int ret = tfs_close(args.fhandle);
 
-    if (write(clients[args.session_id].fd, &ret, sizeof(ret)) < 0) {
+    if ((write(clients[args.session_id].fd, &ret, sizeof(int))) < 0) {
         return -1;
     }
 
@@ -167,41 +178,56 @@ int handle_close(close_args_t args) {
 //     return 0;
 // }
 
-int handle_write(write_args_t args, int fd) {
-    char buffer[BUFFER_SIZE];
-    memset(buffer, 0, sizeof(buffer));
+// int handle_write(write_args_t args) {
+//     char buffer[BUFFER_SIZE];
+//     memset(buffer, 0, sizeof(buffer));
 
-    int total_bytes_read = 0;
-    int bytes_to_read;
-    int bytes_read;
+//     int total_bytes_read = 0;
+//     int bytes_to_read;
+//     int bytes_read;
 
-    // printf("fhandle: %d\n", args.fhandle);
-    // printf("session_id: %d\n", args.session_id);
+//     // printf("fhandle: %d\n", args.fhandle);
+//     // printf("session_id: %d\n", args.session_id);
 
-    while (total_bytes_read < args.len) {
-        if (BUFFER_SIZE > args.len - (size_t)total_bytes_read) {
-            bytes_to_read = (int)(args.len - (size_t)total_bytes_read);
-        } else {
-            bytes_to_read = BUFFER_SIZE;
-        }
+//     while (total_bytes_read < args.len) {
+//         if (BUFFER_SIZE > args.len - (size_t)total_bytes_read) {
+//             bytes_to_read = (int)(args.len - (size_t)total_bytes_read);
+//         } else {
+//             bytes_to_read = BUFFER_SIZE;
+//         }
 
-        bytes_read = (int)read(fd, buffer, (size_t)bytes_to_read);
-        // printf("bytes_to_read: %d\n", bytes_read);
-        // printf("buffer: %s", buffer);
-        if (bytes_read < 0) {
-            return -1;
-        }
+//         bytes_read = (int)read(fd, buffer, (size_t)bytes_to_read);
+//         // printf("bytes_to_read: %d\n", bytes_read);
+//         // printf("buffer: %s", buffer);
+//         if (bytes_read < 0) {
+//             return -1;
+//         }
 
-        total_bytes_read += bytes_read;
+//         total_bytes_read += bytes_read;
 
-        if (tfs_write(args.fhandle, buffer, (size_t)bytes_to_read) < 0) {
-            total_bytes_read = -1;
-            break;
-        }
-    }
+//         if (tfs_write(args.fhandle, buffer, (size_t)bytes_to_read) < 0) {
+//             total_bytes_read = -1;
+//             break;
+//         }
+//     }
 
-    if (write(clients[args.session_id].fd, &total_bytes_read,
-              sizeof(total_bytes_read)) < 0) {
+//     if (write(clients[args.session_id].fd, &total_bytes_read,
+//               sizeof(total_bytes_read)) < 0) {
+//         return -1;
+//     }
+
+//     printf("Writing stuff... done!\n");
+
+//     return 0;
+// }
+
+
+int handle_write(write_args_t args) {
+    int id = args.session_id;
+    int bytes_read = (int)tfs_write(args.fhandle, clients[id].buffer[clients[id].consptr] + 1 + sizeof(args), args.len);
+
+    if (write(clients[id].fd, &bytes_read,
+            sizeof(bytes_read)) < 0) {
         return -1;
     }
 
@@ -225,13 +251,13 @@ int handle_read(read_args_t args) {
         return -1;
     }
 
-    char buff[sizeof(bytes_read) + (unsigned)bytes_read * sizeof(char)];
+    char ret_message[sizeof(bytes_read) + (unsigned)bytes_read * sizeof(char)];
 
-    memcpy(buff, &bytes_read, sizeof(bytes_read));
-    memcpy(buff + sizeof(bytes_read), buffer, (unsigned)bytes_read);
+    memcpy(ret_message, &bytes_read, sizeof(bytes_read));
+    memcpy(ret_message + sizeof(bytes_read), buffer, (unsigned)bytes_read);
 
     // A while loop would be better
-    if (write(clients[args.session_id].fd, &buff, sizeof(buff)) < 0) {
+    if (write(clients[args.session_id].fd, &ret_message, sizeof(ret_message)) < 0) {
         free(buffer);
         return -1;
     }
@@ -302,7 +328,7 @@ void *consumer(void *client_id) {
             case TFS_OP_CODE_WRITE:;
                 memcpy(&write_args, args + 1, sizeof(write_args));
 
-                //handle_write(write_args, args + 1 + sizeof(write_args));
+                handle_write(write_args);
                 break;
 
             case TFS_OP_CODE_READ:;
@@ -342,6 +368,7 @@ int main(int argc, char **argv) {
     char *pipename = argv[1];
     int fd;
     char op_code;
+    int id;
 
     printf("Starting TecnicoFS server with pipe called %s\n", pipename);
 
@@ -386,11 +413,11 @@ int main(int argc, char **argv) {
 
         case TFS_OP_CODE_OPEN:;
             open_args_t open_args;
-            if (read(fd, &open_args, sizeof(open_args_t)) < 0) {
+            if (read(fd, &open_args, sizeof(open_args)) < 0) {
                 break;
             }
 
-            int id = open_args.session_id;
+            id = open_args.session_id;
 
             pthread_mutex_lock(&clients[id].mutex);
             while (clients[id].count) {
@@ -419,29 +446,104 @@ int main(int argc, char **argv) {
 
         case TFS_OP_CODE_CLOSE:;
             close_args_t close_args;
-            if (read(fd, &close_args, sizeof(close_args_t)) < 0) {
+            if (read(fd, &close_args, sizeof(close_args)) < 0) {
                 break;
             }
 
-            handle_close(close_args);
+            id = close_args.session_id;
+
+            pthread_mutex_lock(&clients[id].mutex);
+            while (clients[id].count) {
+                pthread_cond_wait(&clients[id].produce, &clients[id].mutex);
+            }
+
+            clients[id].buffer[clients[id].prodptr] =
+                (char *)malloc(1 + sizeof(close_args));
+            if (clients[id].buffer[clients[id].prodptr] == NULL) {
+                break;
+            }
+
+            clients[id].buffer[clients[id].prodptr][0] = TFS_OP_CODE_CLOSE;
+            memcpy(clients[id].buffer[clients[id].prodptr] + 1, &close_args,
+                   sizeof(close_args));
+
+            clients[id].prodptr++;
+            if (clients[id].prodptr == MAX_REQUESTS_PER_CLIENT) {
+                clients[id].prodptr = 0;
+            }
+            clients[id].count++;
+
+            pthread_cond_signal(&clients[id].consume);
+            pthread_mutex_unlock(&clients[id].mutex);
             break;
 
         case TFS_OP_CODE_WRITE:;
             write_args_t write_args;
-            if (read(fd, &write_args, sizeof(write_args_t)) < 0) {
+            if (read(fd, &write_args, sizeof(write_args)) < 0) {
                 break;
             }
 
-            handle_write(write_args, fd);
+            id = write_args.session_id;
+
+            pthread_mutex_lock(&clients[id].mutex);
+            while (clients[id].count) {
+                pthread_cond_wait(&clients[id].produce, &clients[id].mutex);
+            }
+
+            clients[id].buffer[clients[id].prodptr] =
+                (char *)malloc(1 + sizeof(write_args) + write_args.len);
+            if (clients[id].buffer[clients[id].prodptr] == NULL) {
+                break;
+            }
+
+            clients[id].buffer[clients[id].prodptr][0] = TFS_OP_CODE_WRITE;
+            memcpy(clients[id].buffer[clients[id].prodptr] + 1, &write_args,
+                   sizeof(write_args));
+            if(read(fd, clients[id].buffer[clients[id].prodptr] + 1 + sizeof(write_args), write_args.len) < 0) {
+                break;
+            }
+
+            clients[id].prodptr++;
+            if (clients[id].prodptr == MAX_REQUESTS_PER_CLIENT) {
+                clients[id].prodptr = 0;
+            }
+            clients[id].count++;
+
+            pthread_cond_signal(&clients[id].consume);
+            pthread_mutex_unlock(&clients[id].mutex);
             break;
 
         case TFS_OP_CODE_READ:;
             read_args_t read_args;
-            if (read(fd, &read_args, sizeof(read_args_t)) < 0) {
+            if (read(fd, &read_args, sizeof(read_args)) < 0) {
                 break;
             }
 
-            handle_read(read_args);
+            id = read_args.session_id;
+
+            pthread_mutex_lock(&clients[id].mutex);
+            while (clients[id].count) {
+                pthread_cond_wait(&clients[id].produce, &clients[id].mutex);
+            }
+
+            clients[id].buffer[clients[id].prodptr] =
+                (char *)malloc(1 + sizeof(read_args));
+            if (clients[id].buffer[clients[id].prodptr] == NULL) {
+                break;
+            }
+
+            clients[id].buffer[clients[id].prodptr][0] = TFS_OP_CODE_READ;
+            memcpy(clients[id].buffer[clients[id].prodptr] + 1, &read_args,
+                   sizeof(read_args));
+
+            clients[id].prodptr++;
+            if (clients[id].prodptr == MAX_REQUESTS_PER_CLIENT) {
+                clients[id].prodptr = 0;
+            }
+            clients[id].count++;
+
+            pthread_cond_signal(&clients[id].consume);
+            pthread_mutex_unlock(&clients[id].mutex);
             break;
 
         case TFS_OP_CODE_SHUTDOWN_AFTER_ALL_CLOSED:;
