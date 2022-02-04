@@ -1,6 +1,5 @@
 #include "tfs_server.h"
 
-pthread_mutex_t clients_mutex = PTHREAD_MUTEX_INITIALIZER;
 static client_t clients[MAX_CLIENTS];
 static int ids[MAX_CLIENTS];
 
@@ -105,31 +104,31 @@ int set_client(char path[MAX_FILE_NAME], int fd) {
 
 int handle_mount(mount_args_t args) {
 
-    pthread_mutex_lock(&clients_mutex);
 
     int fd = open(args.client_pipe_name, O_WRONLY);
     if (fd < 0) {
-        pthread_mutex_unlock(&clients_mutex);
         return -1;
     }
 
     int session_id = set_client(args.client_pipe_name, fd);
 
     if (write(fd, &session_id, sizeof(session_id)) < 0) {
-        pthread_mutex_unlock(&clients_mutex);
         return -1;
     }
 
-    pthread_mutex_unlock(&clients_mutex);
     printf("Mounted session number: %d\n", session_id);
 
     return 0;
 }
 
 int handle_unmount(unmount_args_t args) {
+    pthread_mutex_lock(&clients[args.session_id].mutex);
+
     if (close(clients[args.session_id].fd) < 0) {
+        pthread_mutex_unlock(&clients[args.session_id].mutex);
         return -1;
     }
+    pthread_mutex_unlock(&clients[args.session_id].mutex);
 
     free_client(ids[args.session_id]);
 
@@ -273,7 +272,8 @@ int handle_shutdown(shutdown_args_t args, char pipename[MAX_FILE_NAME], int fd) 
     printf("Request to shutdown from client: %d\n", args.session_id);
 
     int ret = tfs_destroy_after_all_closed();
-
+    
+    
     if(write(clients[args.session_id].fd, &ret, sizeof(ret)) < 0) {
         return -1;
     }

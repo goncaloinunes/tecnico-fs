@@ -99,7 +99,7 @@ int main(int argc, char **argv) {
 
     assert(tfs_mount(argv[1], argv[2]) == 0);
 
-    sleep(1);
+    // sleep(1);
 
     f = tfs_open(path, TFS_O_CREAT);
     assert(f != -1);

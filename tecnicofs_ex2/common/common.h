@@ -28,6 +28,9 @@ enum {
  * Protocolo 
 */
 
+// Remove struct padding
+#pragma pack(push, 1)
+
 typedef struct {
     char client_pipe_name[MAX_FILE_NAME];
 } mount_args_t;
@@ -62,6 +65,9 @@ typedef struct {
 typedef struct {
     int session_id;
 } shutdown_args_t;
+
+// Go back to normal
+#pragma pack(pop)
 
 
 
