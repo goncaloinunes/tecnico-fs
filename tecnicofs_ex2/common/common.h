@@ -25,7 +25,7 @@ enum {
 
 
 /*
- * Protocolo 
+ * Protocol
 */
 
 // Remove struct padding

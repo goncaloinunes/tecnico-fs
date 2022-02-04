@@ -1,6 +1,8 @@
 #include "tfs_server.h"
 
 static client_t clients[MAX_CLIENTS];
+
+// Trick to mantain clients' ids in memory, so that threads work correctly.
 static int ids[MAX_CLIENTS];
 
 int find_free_client() {
@@ -47,7 +49,6 @@ void initialize_client(int client) {
     }
 
 }
-
 
 void free_clients() {
     for (int i = 0; i < MAX_CLIENTS; i++) {
@@ -161,66 +162,6 @@ int handle_close(close_args_t args) {
     return ret;
 }
 
-// int handle_write(write_args_t args, int fd) {
-//     char* ptr = (char*)malloc(args.len * sizeof(char));
-//     if(ptr == NULL) {
-//         return -1;
-//     }
-
-//     if(read(fd, ptr, args.len * sizeof(char)) < 0) {
-//         return -1;
-//     }
-
-//     tfs_write
-
-//     free(ptr);
-//     return 0;
-// }
-
-// int handle_write(write_args_t args) {
-//     char buffer[BUFFER_SIZE];
-//     memset(buffer, 0, sizeof(buffer));
-
-//     int total_bytes_read = 0;
-//     int bytes_to_read;
-//     int bytes_read;
-
-//     // printf("fhandle: %d\n", args.fhandle);
-//     // printf("session_id: %d\n", args.session_id);
-
-//     while (total_bytes_read < args.len) {
-//         if (BUFFER_SIZE > args.len - (size_t)total_bytes_read) {
-//             bytes_to_read = (int)(args.len - (size_t)total_bytes_read);
-//         } else {
-//             bytes_to_read = BUFFER_SIZE;
-//         }
-
-//         bytes_read = (int)read(fd, buffer, (size_t)bytes_to_read);
-//         // printf("bytes_to_read: %d\n", bytes_read);
-//         // printf("buffer: %s", buffer);
-//         if (bytes_read < 0) {
-//             return -1;
-//         }
-
-//         total_bytes_read += bytes_read;
-
-//         if (tfs_write(args.fhandle, buffer, (size_t)bytes_to_read) < 0) {
-//             total_bytes_read = -1;
-//             break;
-//         }
-//     }
-
-//     if (write(clients[args.session_id].fd, &total_bytes_read,
-//               sizeof(total_bytes_read)) < 0) {
-//         return -1;
-//     }
-
-//     printf("Writing stuff... done!\n");
-
-//     return 0;
-// }
-
-
 int handle_write(write_args_t args) {
     int id = args.session_id;
     int bytes_read = (int)tfs_write(args.fhandle, clients[id].buffer[clients[id].consptr] + 1 + sizeof(args), args.len);
@@ -255,7 +196,6 @@ int handle_read(read_args_t args) {
     memcpy(ret_message, &bytes_read, sizeof(bytes_read));
     memcpy(ret_message + sizeof(bytes_read), buffer, (unsigned)bytes_read);
 
-    // A while loop would be better
     if (write(clients[args.session_id].fd, &ret_message, sizeof(ret_message)) < 0) {
         free(buffer);
         return -1;
@@ -373,16 +313,20 @@ int main(int argc, char **argv) {
     printf("Starting TecnicoFS server with pipe called %s\n", pipename);
 
     initialize_clients();
-    tfs_init();
+    if(tfs_init() < 0) {
+        exit(EXIT_FAILURE);
+    }
 
     unlink(pipename);
     if (mkfifo(pipename, 0777) != 0) {
         fprintf(stderr, "Erro ao criar pipe!");
+        exit(EXIT_FAILURE);
     }
 
     fd = open(pipename, O_RDONLY);
     if (fd < 0) {
         fprintf(stderr, "Erro ao abrir pipe!");
+        exit(EXIT_FAILURE);
     }
 
     while (1) {
